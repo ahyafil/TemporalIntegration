@@ -1,0 +1,61 @@
+function plot_conditional_psychometric_curve(S, yValue, DataPointsCutoff, Colour)
+% plot_conditional_psychometric_curve(S)
+% plot_conditional_psychometric_curve(S, DataPointsCutoff, Colour)
+
+if nargin<2
+DataPointsCutoff = 20;
+end
+
+if nargin<3
+    Colour = [0 0 0; 1 0 0]; % color of psychometric curves (graded from black to red)
+end
+
+
+
+
+    % do not plot when less than a certain number of data points
+    EnoughDataPoints = S.nDatapoints>= DataPointsCutoff;
+    EnoughDataPoints = double(EnoughDataPoints);
+    EnoughDataPoints(EnoughDataPoints==0) = nan; 
+    EnoughDataPoints = EnoughDataPoints(2:end-1,:);
+
+    % vector of values on x-axis
+    xBinEdges = -S.bnd:S.dx:S.bnd;
+    xBinCenter = xBinEdges(1:end-1) + dx/2;
+
+  %  yMaxValue = min(2,bnd-dx/2);
+
+  %  yValue = - yMaxValue:yMaxValue; % values of evidence 2 we condition on ( bins of 1)
+
+  % find indices corresponding to each value of yValue
+    iValue = zeros(1,length(yValue));
+    for i=1:length(yValue)
+        iValue(i) = find(S.binCenter )
+    end
+
+    ival = find(xBinCenter==yValue(1),1)+ (1:1/dx:2*yMaxValue/dx+1);
+
+    % number of conditional psychometric curves
+    nPC = length(ival);
+
+     % graded colours for psychometric curves
+    ColormapPC = Colour(1,:) + linspace(0,1,nPC)'*diff(Colour);
+
+    Evidence2Label = num2strcell('late ev =%d',yValue);
+    subplot(4,nSubject,s+2*nSubject);
+
+    % all conditional psychometric curves (removing points with non enough data points)
+    PC =  EnoughDataPoints.* IM.IntegrationMap(2:end-1,:); 
+
+    % plot 
+    plot(xBinCenter, PC(:,ival), 'color',ColormapPC,{{},Evidence2Label});
+    if s>1, legend off; end
+    xlabel('early evidence'); ylabel('pright');
+    title(['model ' subject_label{s}]); axis tight;
+
+    subplot(4,nSubject,s+3*nSubject);
+    plot(xBinCenter,EnoughDataPoints(:,ival).*IM.IntegrationMapData(2:end-1,ival),'color',ColormapPC,{{},Evidence2Label});
+    legend off;
+    xlabel('early evidence'); ylabel('pright');        title(['data ' subject_label{s}]); axis tight;
+
+end

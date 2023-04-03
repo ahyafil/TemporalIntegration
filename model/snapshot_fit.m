@@ -1,0 +1,251 @@
+function [U, pi_snap, S]= snapshot_fit( X, Y, mode, span,  param)
+%snapshot_fit  where
+% snapshot_fit( X, Y) fits the snapshot model to data
+% X is the nTrial-by-nSample matrix of sensory evidence, with nTrial the
+% number of trials and nSample the number of samples in each stimulus. Pad
+% with nans if sequence is shorter than nSample for some trials.
+% Y is binary vector of choices.
+%
+% snapshot_fit( X, Y, mode) uses a psychometric curve for each sample evidence
+% if mode is set to 'stochastic' [default], or binary
+% deterministic if set to 'deterministic'.
+%
+% snapshot_fit( X, Y, mode, span) specifies the span of integration for each trial
+% (default:1). Set e.g. to two to allow the model to integrate  two
+% contiguous samples.
+%
+% snapshot_fit( X, Y, mode, span,  param) to specify fitting
+% parameters (same as in logisticmixture). For example use param.lapse =
+% true to include lapses (by default, true for deterministic mode, false
+% for stochastic mode). Use param.FixedLapse to fix the values of lapses
+% (i.e. these parameters will ot be fitted).
+%
+% U is (span+1)-by-nComponent matrix of weights, where the first line represents
+% the intercepts. nComponent is the number of components, i.e.
+% nSample+1-span.
+%
+% [U, pi_snap, S]=
+%
+% See also logisticmixture, snapshot_rnd, snapshot_test,
+% extremadetection_fit
+
+% 1. PROCESS ARGUMENTS
+[nTrial, nSample] = size(X); % number of trials and sensory samples
+if nargin<3
+    mode = 'stochastic';
+end
+if nargin<4 % by default, pure snapshot model where on each trial just looks at one trial
+    span =1;
+end
+
+if nargin<5
+    param = struct;
+end
+if isfield(param, 'trainset')
+    trainset = param.trainset;
+    nTrain = length(param.trainset);
+else % default: use all dataset as training set
+    trainset = 1:nTrial;
+    nTrain = nTrial;
+end
+
+% parameters of Dirichlet prior for mixture coefficients
+if isfield(param, 'alpha')
+    alpha = param.alpha;
+else
+    alpha = 1; % default: uniform prior
+end
+if ~isfield(param, 'lapse')
+    param.lapse = strcmp(mode, 'deterministic');
+end
+if isfield(param, 'FixedLapse')
+    FixedLapse = param.FixedLapse;
+else
+    FixedLapse = [];
+end
+
+    maxIter = 1000; % maximum number of iterations
+if isfield(param, 'maxiter')
+    maxIter = param.maxiter;
+end
+
+%% 2. EXTRACT RELEVANT INFO
+
+% number of mixture components
+nMixture = nSample + 1 -span;
+
+% see which samples are attended for each component
+AttendedComponents = zeros(nSample,nMixture);
+for mm=1:nMixture %weights for m-th component: only look at mm till mm+snap-1 samples
+    AttendedComponents(:,mm) = [zeros(1,mm-1) ones(1,span) zeros(1,nSample+1-span-mm)];
+end
+
+% compute total evidence used for each component
+Evidence = X*AttendedComponents; % for each component, sum over all samples in snapshot
+
+%% 3. FIT MODEL
+if strcmp(mode, 'deterministic')
+    % DETERMINISTIC VARIANT
+
+    % probability of choosing right response according to snapshot: PM<0->p=0, PM=0->p=0.5; PM>0->p=1
+    pResp1 = (1+sign(Evidence))/2;
+    pResp1(:,end+1) = 0; % left lapse: all left
+    pResp1(:,end+1) = 1; % right lapse: all right
+
+    % compute likelood of each response ( ntrial x nT matrix)
+    lh(Y==1,:) = pResp1(Y==1,:); % for response =1 (0:0, 1:1)
+    lh(Y==0,:) = 1-pResp1(Y==0,:); % for response =0 (0:1, 1:0)
+
+    %% run EM algorithm to infer value of parameters with multiple initial
+    % points
+    nInit = 10; % number of initial points for EM algo
+    nParameters = nMixture+ 2*isempty(FixedLapse); % mixtures and two lapses
+
+    % apply EM
+    [LLH, z, pi_snap,LLH_all,iter] = EM_multinit( lh(trainset,:), nParameters, nInit,nTrain, maxIter, alpha, FixedLapse);
+
+    % fill structure of metrics
+    S = struct;
+    S.LLH = LLH; % Log-Likelihood
+
+    S.nPar = nParameters;
+    S.nTrial = length(Y); % nomber of trials
+    S.BIC = nParameters*log(S.nTrial) -2*LLH; % Bayes Information Criterion
+    S.AIC = 2*nParameters - 2*LLH; % Akaike Information Criterior
+    S.AICc = S.AIC + 2*nParameters*(nParameters+1)/(S.nTrial-nParameters-1); % AIC corrected for sample size
+
+    S.z = z; % responsabilities
+    S.LLH_all = LLH_all; % LLH found after each EM (with different initialization)
+    S.iter = iter;
+
+    % probability of response 1 according to model
+    S.Y = pResp1*pi_snap;
+
+    %% Laplace approximation
+
+    % Hessian of neg-logposterior
+    yy = [1-Y(:) Y(:) ]; % first column for response 0, second for response 1
+    lhh = [1-S.Y S.Y]; % probability of each of the responses
+    rat2 = yy ./ lhh.^2;
+    rat2(yy==0) = 0; % avoid nan values
+    srat2 = sum(rat2,2);
+
+    grad= pResp1; % gradient w.r.t mixture coefficients
+
+    % part due to log-likelihood
+    H_LLH = grad' * spdiags(srat2,0,nTrial,nTrial) *grad;
+    H_LLH = H_LLH(1:nParameters,1:nParameters); % if lapses are fixed, exclude them
+
+    H_logprior =  (alpha-1)./pi_snap(1:nParameters).^2; % hessian due to Dirichlet prior
+
+    H = H_LLH + H_logprior;
+
+    % project to free basis (mixtures must sum to one)
+    P = zeros(nParameters-1,nParameters); % rows: free, col:complete
+    for i=1:nParameters-1
+        P(i,:) = [ones(1,i) -i zeros(1,nParameters-i-1)]/sqrt(i*(i+1)); % coordinates for i-th basis vector of free space
+    end
+    H = P*H*P'; % square matrix of dim nPar-1
+
+    % Posterior Covariance (see covariance under constraint Seber & Wild
+    % Appendix E)
+    S.covb = P'* (H \ P);
+
+    % standard error of estimates
+    S.se = sqrt(diag(S.covb))';
+    S.mixt_se = S.se;
+    if FixedLapse
+        S.mixt_se = [S.mixt_se 0 0];
+    end
+
+    % compute responsibility
+    zz1 = (pResp1 .* pi_snap')./S.Y; % responsability, assuming response 1
+    zz0 = ((1-pResp1).*pi_snap')./(1-S.Y); % responsability, assuming response 0
+    S.responsibility = yy(:,1).*zz0 + yy(:,2).*zz1; % responsability % posterior probability for lapse given current parameters
+
+    U = []; % no weights
+
+else
+    % STOCHASTIC VARIANT
+
+    Evidence  = permute(Evidence,[1 3 2]); % design matrix: trial x (bias/stim) x component
+
+    %fit model using  mixture of logistic model
+    Ridge = 0; % no regularization
+    param.bias = 0; % no intercept
+    [U, pi_snap, S] = logisticmixture(Evidence, Y, Ridge,nMixture, [], param);
+end
+end
+
+
+%% EM algo with multiple initial points (deterministic model)
+function [LLH, z, pi, LLH_all,iter] = EM_multinit( lh, nPar, nInit,nTrial, maxIter, alpha, fixedlapse)
+
+%% initial values of mixture coefficients
+
+pi_ini = ones(1,nPar)/nPar; % equiprobable for first initials points
+pi_ini(2:nInit,:)  = drchrnd(ones(1,nPar),nInit-1); % draw from uniform Dirichlet distribution for others
+if ~isempty(fixedlapse) % add fixed parameters and renormalize
+    pi_ini = [(1-sum(fixedlapse))*pi_ini  repmat(fixedlapse,nInit,1)];
+end
+
+%% run EM model
+LLH_all = zeros(1,nInit); % store LLH after each initialization
+iter = zeros(1,nInit); % number of iteration
+pi = zeros(size(pi_ini))';% best-fitting parameters for each initialization
+
+for n=1:nInit
+    % run EM algo with this starting point
+    fprintf('EM with starting points %d/%d\n',n,nInit);
+    [LLH_all(n), z(:,:,n), pi(:,n), iter(n)] = EM(pi_ini(n,:),lh, nTrial,maxIter, alpha, fixedlapse);
+end
+
+% find best LLH overall
+[LLH,n] = max(LLH_all);
+z = z(:,:,n);
+pi = pi(:,n);
+iter = iter(n);
+end
+
+
+%% EM algo to find best fitting value for deterministic
+function  [LLH, z, pi, iter] = EM(pi, lh, nTrial, maxIter, alpha, fixedlapse)
+
+% marginalized likelihood for each trial
+lh_all = lh * pi';
+
+% initialize LLH
+LLH = -Inf;
+LLHdiff = Inf;
+iter = 0; % iteration counter
+TolFun = 1e-9; % tolerance criterion for convergence
+
+while (iter<maxIter) && abs(LLHdiff)>TolFun % loop until convergence or reached max number of iterations
+
+    % Estep: evuate responsibilities
+    z = (lh.*pi) ./lh_all; % matrix responsibilities (trial by component)
+
+    % M step; update coefficients
+    % (note we are setting alphas of the
+    % Dirichlet prior to 1)
+    counts = sum(z,1);
+    pi = (counts +alpha-1)/(nTrial +sum(alpha-1)); % new set of mixture coefficients
+
+    if ~isempty(fixedlapse) %if lapse parameters are fixed
+        % renormalize to required proportion of non-lapse and add fixed lapse parameters
+        pi = [(1-sum(fixedlapse))*pi(1:end-2) fixedlapse];
+    end
+
+    % marginalized likelihood for each trial
+    lh_all = lh * pi';
+
+    LLHold = LLH; % value of LLH on previous iteration
+
+    % update value of log-likelihood
+    LLH = sum(log(lh_all));
+    LLHdiff = LLH - LLHold;
+    iter = iter+1;
+end
+end
+
+

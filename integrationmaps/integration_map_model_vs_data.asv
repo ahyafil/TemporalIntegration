@@ -1,0 +1,66 @@
+function S = integration_map_model_vs_data(X,Y,Ymodel, dx, bnd, nBootstrap)
+% S = integration_map_model_vs_data(X,Y,Ymodel, dx, bnd, nBootstrap)
+% compares integration map for experimental data and simulation
+
+if nargin<6 % no bootstrap
+    nBootstrap = 0;
+end
+
+S = struct();
+
+% APPLY INTEGRATION MAP FOR MODEL
+S_model = IntegrationMap(X, Ymodel, bnd, dx);
+S.IntegrationMapModel = S_model;
+
+% APPLY INTEGRATION MAP FOR DATA
+S_data = IntegrationMap(X, Y, bnd, dx);
+S.IntegrationMapData = S_data;
+
+% for each bin, make sure we have enough data points (20)
+EnoughDataPoints = (S_model.nDatapoints>20);
+
+%% compute correlation and SSE w.r.t data
+S.r = corr(S_model.IntegrationMap(EnoughDataPoints), S_data.IntegrationMap(EnoughDataPoints)); % Pearson's correlation coeff (only including bins with sufficient datapoints)
+
+% sum of square difference between model matrix and data matrix
+S.sse = sum(sum(( S_model.IntegrationMap - S_data.IntegrationMap ).^2));
+
+S.dx = dx;
+S.bnd = bnd;
+
+%% APPLY BOOTSTRAP
+if nBootstrap>0
+    fprintf('computed boostrap values for correlation with experimental data...');
+
+    S.rBoostrap = zeros(1,nBootstrap); % r
+    S.SSE_Boostrap = zeros(1,nBootstrap);
+    nTrial = length(Ymodel); % number of trials
+
+    for b=1:nBootstrap % for each bootstrap
+        rd = randi(nTrial,1,nTrial); % random draw of trials (with replacement)
+
+        % apply integration map to boostrapped data (for model
+        % and experimental data)
+        Sbootstrap_Model = IntegrationMap(X(rd,:), Ymodel(rd), dx, bnd, 0);
+        Sbootstrap_Data = IntegrationMap(X(rd,:), Y(rd), dx, bnd, 0);
+IntegrationMapDataBs = Sbootstrap_Data.IntegrationMap;
+IntegrationMapBs= Sbootstrap_Model.IntegrationMap;
+nDatapointsBtstrp = Sbootstrap_Model
+[,]
+
+        EnoughDataPointsBs = (nDatapointsBtstrp>20);
+
+        % Pearson's correlation coeff (only including bins with sufficient datapoints)
+        S.rBoostrap(b) = corr(IntegrationMapBs(EnoughDataPointsBs),IntegrationMapDataBs(EnoughDataPointsBs));
+
+        % sum of square difference
+        S.SSE_Boostrap(b) = sum(sum((IntegrationMapBs-IntegrationMapDataBs).^2));
+
+        fprintf('*');
+    end
+    fprintf('done\n');
+end
+
+
+
+

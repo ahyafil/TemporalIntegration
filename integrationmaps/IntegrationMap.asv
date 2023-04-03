@@ -1,0 +1,77 @@
+function S = IntegrationMap(X, Y, bnd, dx)
+% S = IntegrationMap(X, Y, [,bnd] [,dx]) computes an integration
+% map
+% X: ntrial x 2 matrix (evidence from source 1 in column 1, evidence from source 2 in column 2)
+% Y: corresponding binary vector of choices (can also be probability for
+% choice 1 as defined from a model)
+% dx :binsize
+% bnd: bounds of analysis (i.e. [Xmin Xmax])
+
+if nargin<3
+    bnd = [min(X(:)) max(X(:))];
+end
+if nargin<4
+    dx = diff(bnd)/10; % by default use 10 bins
+end
+
+sigma = 2.5*dx; % width of kernel (in bins)
+nConv = 10; % length of convolution kernel 
+
+
+if nargin<7
+EvidenceLabels =  {'early evidence', 'late evidence'};
+end
+
+% Define bin boundaries
+binBoundaries = -bnd:dx:bnd;
+binBoundariesInf = [-Inf binBoundaries Inf]; 
+
+% center of bins
+binCenters = [binBoundaries(1)-dx/2 binBoundaries+dx/2];
+
+%% compute number of trials and sum responses in each bin
+nBin = length(binCenters);
+nDatapoints = zeros(nBin);
+M = zeros(nBin);
+for i=1:nBin
+    mask1 = X(:,1)>= binBoundariesInf(i) & X(:,1)< binBoundariesInf(i+1); % data points in this bin for evidence 1
+    for j=1:nBin
+         mask = mask1 & X(:,2)>= binBoundariesInf(j) & X(:,2)< binBoundariesInf(j+1); % data points in this 2D bin
+         
+         % number of data points in this bin
+         nDatapoints(i,j) = sum(mask); 
+
+         % sum of responses for data points in this bin
+         M(i,j) = sum(Y(mask));
+    end
+end
+
+%% smooth by convolution with gaussian kernel
+
+ % define gaussian kernel
+%filter_1d = exp(-linspace(-1,1,nConv+1).^2/2/sigma^2);
+filter_1d = exp(-(-nConv/2:nConv/2).^2/2/sigma^2);
+
+
+% 2D filter
+filter_2d = filter_1d'*filter_1d;
+
+% apply 2D convolution
+M = conv2(M,filter_2d,'same');
+nDatapoints = conv2(nDatapoints,filter_2d,'same');
+
+%% compute mean value (as sum divided by number of data points)
+M = M./nDatapoints;
+
+%% add everythin in structure
+S = struct;
+S.IntegrationMap = M;
+S.nDatapoints = nDatapoints;
+S.dx = dx;
+S.bnd = bnd;
+S.binCenters = binCenters;
+S.nConv = nConv;
+S.sigma = sigma;
+S.EvidenceLabels = EvidenceLabels;
+
+end
