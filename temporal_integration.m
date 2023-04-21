@@ -5,7 +5,7 @@ clear; close all;
 % select animal: 'rat','monkey', 'human'
 animal = 'monkey';
 
-UseSimulations = false; % true to analyze simulated data, false to analyze experimental data
+UseSimulations = true; % true to analyze simulated data, false to analyze experimental data
 SimulatedModel = 'extremadetection';  %  'extremadetection' or 'integration': name of model to simulate and analyze (for disagree trials and subjective weights)
 
 % define variant of extrema detection and snapshot model
@@ -23,7 +23,7 @@ UseFixedThresholdExtremaDetection = false; % (default: true) whether the thresho
 anals.integration = 0; ~UseSimulations; % integration model
 anals.snapshot = 0;~UseSimulations; % snapshot model
 anals.extremadetection = ~UseSimulations; % extrema detection
-anals.subjectiveweights = 0; strcmp(animal, 'monkey'); % capturing subjective weights, mapping from stimulus space to evidence space
+anals.subjectiveweights = 1; strcmp(animal, 'monkey'); % capturing subjective weights, mapping from stimulus space to evidence space
 anals.disagree = 0; % analysis of disagree trials
 
 Nbtstrp = 100; % number of bootstraps for integration maps
@@ -31,10 +31,6 @@ nRepPosterior = 2000; % number of simulations of integration/extrema detection m
 
 dxIntegrationMap = .2; % bin size for integration maps
 sigmaIntegrationMap = .5; % smoothing parameter for integration maps
-
-
-%numWorkers = 10; % how many workers to use (parallel processing)
-%mono_tool('parcluster','',numWorkers); % define parfor clusters
 
 % a regressor modulating stimulus sensitivity is included in monkey and rat
 % data

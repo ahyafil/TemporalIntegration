@@ -1,4 +1,4 @@
-%% Plot Figure 2, 4 or 5
+%% Plot Figure 2, 5 or 6
 % Displays fits of psychometric curves, sensory kernels, model comparison for integrant and no-integration models
 
 clear; close all;
@@ -442,9 +442,9 @@ if strcmp(animal, 'monkey')
     text(.36, .24, 'p(rightward)','rotation',90);
 
 else
-    %% FIGURE FOR HUMANS AND RATS (FIGURE 4 & 5)
+    %% FIGURE FOR HUMANS AND RATS (FIGURE 5 & 6)
     figure;
-    set(gcf, 'name',"Figure "+(4+strcmp(animal, 'rat')));
+    set(gcf, 'name',"Figure "+54+strcmp(animal, 'rat')));
     nRow = 3; % number of panel rows
     nCol = 4; % number of panel columns
 
