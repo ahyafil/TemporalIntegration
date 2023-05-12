@@ -1,6 +1,6 @@
 # Temporal integration is a robust feature of perceptual decisions
 
-This repository contains the Matlab code to carry out the data analysis for the manuscript entitled "Temporal integration is a robust feature of perceptual decisions" by A. Hyafil, J. de la Rocha, C. Pericas,  LN. Katz,  AC. Huk & JW. Pillow ([see preprint](https://www.biorxiv.org/content/10.1101/2022.10.25.513647v1)).
+This repository contains the Matlab code to carry out the data analysis for our article ["Temporal integration is a robust feature of perceptual decisions" by A. Hyafil, J. de la Rocha, C. Pericas,  LN. Katz,  AC. Huk & JW. Pillow,  eLife 12:e84045](https://elifesciences.org/articles/84045).
 
 Please report any bug / missing function.
 
